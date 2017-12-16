@@ -15,7 +15,7 @@ I wanted to know to whom to follow related to this space.
 
 ## Example
 
-with parameters: data/all_twitter_user.tsv seeds/influencers_seed.txt 25 10 10
+with parameters: data/all_twitter_user.tsv seeds/influencers_seed.txt 40 10 10
 ```
 85	NickSzabo4
 85	aantonop
