@@ -1,5 +1,7 @@
 import sys
 import os
+import json
+import argparse
 from time import sleep
 from collections import Counter
 from config import AUTH_TOKEN, AUTH_TOKEN_SECRET, CONSUMER_KEY, CONSUMER_SECRET
@@ -9,7 +11,7 @@ import twitter
 def process_previous_file(target_file):
     already_download_users = {}
     if os.path.exists(target_file):
-        for line in open(sys.argv[1]).readlines():
+        for line in open(target_file).readlines():
             try:
                 twitter_user, following_user, _ = line.split('\t')
                 if not already_download_users.get(twitter_user):
@@ -18,6 +20,18 @@ def process_previous_file(target_file):
             except:
                 continue
     return already_download_users
+
+def get_detailed_information(target_file, users):
+    detail_info = {}
+    if os.path.exists(target_file):
+        for line in open(target_file).readlines():
+            try:
+                _, following_user, user_data = line.split('\t')
+                if following_user in users and detail_info.get(following_user) is None:
+                    detail_info[following_user] = json.loads(user_data)
+            except:
+                continue
+    return detail_info
 
 def split_in_sublist(sublist_size, list_):
     return [
@@ -77,7 +91,9 @@ def get_users_to_download(top_following, all_users, users_per_iter=10):
             selected_users.append(following_user)
     return selected_users
 
-def generate_final_result(all_users, already_download_users, top_x=500):
+def generate_final_result(
+        all_users, already_download_users, top_x=500, detail=False, target_file=None
+    ):
     top_users = Counter([
         following_user
         for user in all_users
@@ -88,12 +104,23 @@ def generate_final_result(all_users, already_download_users, top_x=500):
         most_common = top_users.most_common()
     else:
         most_common = top_users.most_common(top_x)
+    most_common_screen_names = [user_row[0] for user_row in most_common]
+    if detail:
+        detail_info = get_detailed_information(target_file, most_common_screen_names)
     for user, user_counter in most_common:
-        print("%s\t%s" % (user_counter, user))
+        print("%s\t@%s" % (user_counter, user))
+        if detail:
+            description = detail_info[user].get('description', '').replace('\n', ' ')
+            last_tweet = detail_info[user].get('status', {}).get('text', '').replace('\n', ' ')
+            print("\t%s" % description)
+            print("\t%s" % last_tweet)
+            print("")
+    return most_common_screen_names
+
 
 def retrieve_influencers(
-        target_file, initial_users_file,
-        users_per_iter=10, iterations=10, top_x=500
+        target_file, initial_users_file, users_per_iter=10,
+        iterations=10, top_x=500, detail=False
     ):
     twitter_client = twitter.Api(
         consumer_key=CONSUMER_KEY,
@@ -116,7 +143,7 @@ def retrieve_influencers(
         current_iteration = 1
         for current_iteration in range(1, iterations + 1):
             print("iteration %s" % current_iteration, file=sys.stderr)
-            print("selected users:\n\t%s" % "\n\t".join(selected_users), file=sys.stderr)
+            print("\tUsers:\n\t%s" % "\n\t".join(selected_users), file=sys.stderr)
             for twitter_user in selected_users:
                 if twitter_user and already_download_users.get(twitter_user) is None:
                     print("downloading user: %s" % twitter_user, file=sys.stderr)
@@ -131,35 +158,49 @@ def retrieve_influencers(
                             )
                     else:
                         write_user_to_file(_file, twitter_user, '', '{}')
-
             top_following = get_top_following(all_users, already_download_users)
             if current_iteration < iterations:
                 selected_users = get_users_to_download(top_following, all_users, users_per_iter)
                 all_users += selected_users
-    generate_final_result(all_users, already_download_users, top_x)
+    influencers = generate_final_result(
+        all_users, already_download_users, top_x, detail, target_file
+    )
 
 
 def main():
-    if len(sys.argv) < 3:
-        print(
-            'Usage:\n\n' + os.path.basename(sys.argv[0]) +
-            ' <db_file> <initial_users_file> [top_x] [users_per_it] [iterations]'
-        )
-    target_file = sys.argv[1]
-    initial_users_file = sys.argv[2]
-    if len(sys.argv) > 3:
-        top_x = int(sys.argv[3])
-    else:
-        top_x = 500
-    if len(sys.argv) > 4:
-        users_per_iter = int(sys.argv[4])
-    else:
-        users_per_iter = 10
-    if len(sys.argv) > 5:
-        iterations = int(sys.argv[5])
-    else:
-        iterations = 10
-    retrieve_influencers(target_file, initial_users_file, users_per_iter, iterations, top_x)
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "initial_users_file",
+        help="Path to the file with a list of twitter screen_name to start the iterations",
+        type=str
+    )
+    parser.add_argument(
+        "-f", "--db_file",
+        help="Location to store the tmp collected data. Default: /tmp/crypto_influencers.tsv",
+        type=str, action='store', default="/tmp/crypto_influencers.tsv"
+    )
+    parser.add_argument(
+        "-l", "--limit", help="Retrieve up to X results. Default: 200. Use -1 for no limit",
+        type=int, action='store', default=200
+    )
+    parser.add_argument(
+        "-n", "--users_per_iter", help="Number of users to retrieve information for each iteration",
+        type=int, action='store', default=10
+    )
+    parser.add_argument(
+        "-i", "--iterations", help="Number of iterations. Default: 10.",
+        type=int, action='store', default=10
+    )
+    parser.add_argument(
+        "-d", "--show_details", help="Show tweets details. Default: False.",
+        action='store_true', default=False
+    )
+    args = parser.parse_args()
+
+    retrieve_influencers(
+        args.db_file, args.initial_users_file, args.users_per_iter,
+        args.iterations, args.limit, detail=args.show_details
+    )
 
 if __name__ == '__main__':
     main()

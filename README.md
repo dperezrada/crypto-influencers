@@ -35,7 +35,7 @@ cp config.py.default config.py
 ## Running the script
 
 ```
-python -u twitter_influencers.py data/all_twitter_user.tsv  seeds/bitcoin-core_seed.txt 1000 10 15 > results/bitcoin-core_seed_1000_10_15.tsv
+python twitter_influencers.py seeds/influencers_seed.txt -l 250 -n 15 > results/influencers_250_10_15.tsv
 ```
 
 ## Results
