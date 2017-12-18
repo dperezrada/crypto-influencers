@@ -119,15 +119,10 @@ def generate_final_result(
 
 
 def retrieve_influencers(
-        target_file, initial_users_file, users_per_iter=10,
+        twitter_client, target_file, initial_users_file, users_per_iter=10,
         iterations=10, top_x=500, detail=False
     ):
-    twitter_client = twitter.Api(
-        consumer_key=CONSUMER_KEY,
-        consumer_secret=CONSUMER_SECRET,
-        access_token_key=AUTH_TOKEN,
-        access_token_secret=AUTH_TOKEN_SECRET
-    )
+    # TODO: split this method
 
     already_download_users = process_previous_file(target_file)
     initial_users = [
@@ -165,6 +160,17 @@ def retrieve_influencers(
     influencers = generate_final_result(
         all_users, already_download_users, top_x, detail, target_file
     )
+    return influencers
+
+def follow_within_list(twitter_client, list_name, influencers):
+    twitter_lists = twitter_client.GetListsList()
+    list_id = None
+    for list_ in twitter_lists:
+        if list_.slug == list_name:
+            list_id = list_.id
+    if list_id:
+        for influencers_batch in split_in_sublist(100, influencers):
+            twitter_client.CreateListsMember(list_id=list_id, screen_name=influencers_batch)
 
 
 def main():
@@ -195,12 +201,27 @@ def main():
         "-d", "--show_details", help="Show tweets details. Default: False.",
         action='store_true', default=False
     )
+    parser.add_argument(
+        "--follow_to_list",
+        help="Name of the twitter list, to add all the users as members. Default: ''.",
+        type=str, action='store'
+    )
     args = parser.parse_args()
 
-    retrieve_influencers(
-        args.db_file, args.initial_users_file, args.users_per_iter,
+    twitter_client = twitter.Api(
+        consumer_key=CONSUMER_KEY,
+        consumer_secret=CONSUMER_SECRET,
+        access_token_key=AUTH_TOKEN,
+        access_token_secret=AUTH_TOKEN_SECRET
+    )
+
+    influencers = retrieve_influencers(
+        twitter_client, args.db_file, args.initial_users_file, args.users_per_iter,
         args.iterations, args.limit, detail=args.show_details
     )
+    if args.follow_to_list:
+        follow_within_list(twitter_client, args.follow_to_list, influencers)
+
 
 if __name__ == '__main__':
     main()
